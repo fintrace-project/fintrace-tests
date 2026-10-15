@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Builds the suites and runs their unit tests; never runs a suite, which needs a live stack and a
+# real token, and would let a flaky network block a release (design-decisions §7.9).
+jobs:
+  smoke:
+    name: fintrace-smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: smoke/go.mod
+          cache-dependency-path: smoke/go.sum
+
+      - name: Format
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "::error::run gofmt -w ."; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build ./cmd/fintrace-smoke
