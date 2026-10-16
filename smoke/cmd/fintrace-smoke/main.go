@@ -22,12 +22,19 @@ import (
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/report"
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/suite"
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/suite/core"
+	"github.com/fintrace-project/fintrace-tests/smoke/internal/suite/mokimporter"
 )
 
 const testClient = "fintrace-test"
 
-var suites = map[string]suite.Func{
-	"fintrace-core": core.Run,
+type app struct {
+	run suite.Func
+	url string
+}
+
+var suites = map[string]app{
+	"fintrace-core":         {run: core.Run, url: "http://localhost:8080"},
+	"fintrace-mok-importer": {run: mokimporter.Run, url: "http://localhost:8090"},
 }
 
 func main() {
@@ -36,8 +43,10 @@ func main() {
 
 func run() int {
 	apps := slices.Sorted(maps.Keys(suites))
-	app := flag.String("app", "", "application to smoke-test: "+strings.Join(apps, ", "))
-	url := flag.String("url", "http://localhost:8080", "the application's base URL")
+	appName := flag.String("app", "", "application to smoke-test: "+strings.Join(apps, ", "))
+	url := flag.String("url", "", "the application's base URL; defaults to its local port (fintrace-core 8080, fintrace-mok-importer 8090)")
+	coreURL := flag.String("core-url", "http://localhost:8080", "fintrace-core's base URL, for a suite that sets up or reads back through it")
+	dumps := flag.String("dumps", "../dumps", "directory of synthetic dumps, laid out as <format>/<size>/")
 	envFile := flag.String("env-file", "", "KEY=VALUE file for FINTRACE_OAUTH2_ISSUER_URI, FINTRACE_TEST_CLIENT_SECRET and POSTGRES_PASSWORD; the environment wins over it")
 	dsn := flag.String("db", "", "Postgres DSN for the checks behind the API, e.g. postgres://fintrace@127.0.0.1:5432/fintrace; without a password it takes POSTGRES_PASSWORD. Omitted, those checks are skipped")
 	zone := flag.String("tz", envOr("TZ", "Europe/Nicosia"), "zone the business timestamps are written in")
@@ -50,9 +59,12 @@ func run() int {
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
-	runSuite, ok := suites[*app]
+	target, ok := suites[*appName]
 	if !ok {
 		return usage("--app must be one of: %s", strings.Join(apps, ", "))
+	}
+	if *url == "" {
+		*url = target.url
 	}
 	loc, err := time.LoadLocation(*zone)
 	if err != nil {
@@ -88,12 +100,14 @@ func run() int {
 	}
 
 	rep := report.New(os.Stdout)
-	runSuite(ctx, suite.Target{
+	target.run(ctx, suite.Target{
 		Client: apiclient.New(*url, token.Access, hc),
+		Core:   apiclient.New(*coreURL, token.Access, hc),
 		Token:  token,
 		DB:     database,
 		Report: rep,
 		Zone:   loc,
+		Dumps:  *dumps,
 	})
 	if !rep.Summary() {
 		return 1

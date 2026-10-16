@@ -19,6 +19,17 @@ func TestMaskHidesSecretsInFormAndJSONBodies(t *testing.T) {
 	}
 }
 
+func TestRequestBodyLogsAnUploadBySizeOnly(t *testing.T) {
+	h := http.Header{"Content-Type": {"multipart/form-data; boundary=x"}}
+	if got := requestBody(h, []byte("SQLite format 3\x00binary")); got != "<multipart, 22 bytes>" {
+		t.Errorf("requestBody = %q", got)
+	}
+	form := http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}
+	if got := requestBody(form, []byte("client_secret=s3cret")); got != "client_secret=***" {
+		t.Errorf("a form body is still masked, not hidden: %q", got)
+	}
+}
+
 func TestMaskHeadersHidesAuthorizationWithoutTouchingTheRequest(t *testing.T) {
 	h := http.Header{"Authorization": {"Bearer abc"}, "Accept": {"application/json"}}
 	got := maskHeaders(h)

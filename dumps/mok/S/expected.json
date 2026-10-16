@@ -1,0 +1,46 @@
+{
+  "size" : "S",
+  "seed" : 20240701,
+  "rows" : 413,
+  "accounts" : [ {
+    "uid" : 1,
+    "name" : "Cash",
+    "currency" : "EUR",
+    "archived" : false,
+    "balance" : 4469.42
+  }, {
+    "uid" : 2,
+    "name" : "Card",
+    "currency" : "EUR",
+    "archived" : false,
+    "balance" : 8673.16
+  }, {
+    "uid" : 3,
+    "name" : "Savings",
+    "currency" : "USD",
+    "archived" : false,
+    "balance" : 8202.72
+  }, {
+    "uid" : 4,
+    "name" : "Dinar wallet",
+    "currency" : "RSD",
+    "archived" : false,
+    "balance" : 69807.05
+  }, {
+    "uid" : 5,
+    "name" : "Travel card",
+    "currency" : "EUR",
+    "archived" : true,
+    "balance" : 0.00
+  }, {
+    "uid" : 5,
+    "name" : "New card",
+    "currency" : "EUR",
+    "archived" : false,
+    "balance" : 1059.14
+  } ],
+  "categories" : 14,
+  "operations" : 177,
+  "transfers" : 21,
+  "diagnostics" : 0
+}

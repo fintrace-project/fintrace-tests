@@ -2,10 +2,12 @@ package calllog
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -51,7 +53,7 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		slog.Debug("call detail",
 			"method", req.Method, "url", req.URL.String(),
-			"requestHeaders", maskHeaders(req.Header), "requestBody", mask(reqBody),
+			"requestHeaders", maskHeaders(req.Header), "requestBody", requestBody(req.Header, reqBody),
 			"responseHeaders", maskHeaders(resp.Header), "responseBody", mask(respBody))
 	}
 	return resp, nil
@@ -65,6 +67,14 @@ func maskHeaders(h http.Header) http.Header {
 		}
 	}
 	return out
+}
+
+// requestBody keeps an uploaded file out of the log: a dump is binary and says nothing a size does not.
+func requestBody(h http.Header, body []byte) string {
+	if strings.HasPrefix(h.Get("Content-Type"), "multipart/") {
+		return fmt.Sprintf("<multipart, %d bytes>", len(body))
+	}
+	return mask(body)
 }
 
 func mask(body []byte) string {
