@@ -21,6 +21,7 @@ import (
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/envfile"
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/report"
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/suite"
+	"github.com/fintrace-project/fintrace-tests/smoke/internal/suite/bff"
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/suite/core"
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/suite/mokimporter"
 )
@@ -35,6 +36,7 @@ type app struct {
 var suites = map[string]app{
 	"fintrace-core":         {run: core.Run, url: "http://localhost:8080"},
 	"fintrace-mok-importer": {run: mokimporter.Run, url: "http://localhost:8090"},
+	"fintrace-bff":          {run: bff.Run, url: "http://localhost:8100"},
 }
 
 func main() {
@@ -44,7 +46,7 @@ func main() {
 func run() int {
 	apps := slices.Sorted(maps.Keys(suites))
 	appName := flag.String("app", "", "application to smoke-test: "+strings.Join(apps, ", "))
-	url := flag.String("url", "", "the application's base URL; defaults to its local port (fintrace-core 8080, fintrace-mok-importer 8090)")
+	url := flag.String("url", "", "the application's base URL; defaults to its local port (fintrace-core 8080, fintrace-mok-importer 8090, fintrace-bff 8100)")
 	coreURL := flag.String("core-url", "http://localhost:8080", "fintrace-core's base URL, for a suite that sets up or reads back through it")
 	dumps := flag.String("dumps", "../dumps", "directory of synthetic dumps, laid out as <format>/<size>/")
 	envFile := flag.String("env-file", "", "KEY=VALUE file for FINTRACE_OAUTH2_ISSUER_URI, FINTRACE_TEST_CLIENT_SECRET and POSTGRES_PASSWORD; the environment wins over it")
@@ -108,6 +110,7 @@ func run() int {
 		Report: rep,
 		Zone:   loc,
 		Dumps:  *dumps,
+		Issuer: issuer,
 	})
 	if !rep.Summary() {
 		return 1

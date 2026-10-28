@@ -18,12 +18,26 @@ go build ./cmd/fintrace-smoke
 
 | Flag          | Default                 | Meaning                                                                    |
 | ------------- | ----------------------- | -------------------------------------------------------------------------- |
-| `--app`       | —                       | application to test: `fintrace-core`                                       |
-| `--url`       | `http://localhost:8080` | its base URL                                                               |
+| `--app`       | —                       | `fintrace-core`, `fintrace-mok-importer` or `fintrace-bff`                 |
+| `--url`       | the app's local port    | its base URL: Core 8080, the importer 8090, the BFF 8100                   |
+| `--core-url`  | `http://localhost:8080` | Core, for a suite that sets up or reads back through it                    |
+| `--dumps`     | `../dumps`              | the synthetic dumps, as `<format>/<size>/`                                 |
 | `--env-file`  | none                    | `KEY=VALUE` file; the process environment wins over it                     |
 | `--db`        | none                    | Postgres DSN for the checks behind the API; without it they are skipped    |
 | `--tz`        | `$TZ`, `Europe/Nicosia` | zone the business timestamps are written in                                |
 | `--log-level` | `warn`                  | `info` logs every call, `debug` its headers and bodies, secrets masked     |
+
+The suites:
+
+- **`fintrace-core`** — the data path (accounts, a category, an operation, a transfer, an anchor,
+  balances) and a workspace's whole lifecycle.
+- **`fintrace-mok-importer`** — S uploaded to the importer, every balance compared in Core.
+- **`fintrace-bff`** — the edge on `fintrace-test`'s token: health and the security headers,
+  authentication, routing (the BFF's 404, the login redirect to the realm, the web UI), Core through
+  the edge with `Location` naming the BFF, the CSRF refusal; then S end to end through the BFF —
+  uploaded, every balance read back, a first expense moving only its account.
+
+The workspace's `./run-smoke.sh` runs all three against `./run-local.sh -d`.
 
 Configuration it reads: `FINTRACE_OAUTH2_ISSUER_URI`, `FINTRACE_TEST_CLIENT_SECRET`, and
 `POSTGRES_PASSWORD` when the `--db` DSN carries no password. It prints no secret and no token, and

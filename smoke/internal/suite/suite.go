@@ -20,6 +20,7 @@ type Target struct {
 	Report *report.Report
 	Zone   *time.Location
 	Dumps  string
+	Issuer string
 }
 
 type Func func(ctx context.Context, t Target)
