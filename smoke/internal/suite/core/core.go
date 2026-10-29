@@ -45,6 +45,14 @@ type balance struct {
 	Balance   float64 `json:"balance"`
 }
 
+type problem struct {
+	Code    string `json:"code"`
+	TraceID string `json:"traceId"`
+	Errors  []struct {
+		Field string `json:"field"`
+	} `json:"errors"`
+}
+
 type run struct {
 	suite.Target
 	ctx     context.Context
@@ -92,6 +100,13 @@ func (r *run) createWorkspace() string {
 	r.check("starts NEW", w.Status, "NEW")
 	r.dbCheck("caller's user created on first request, named from preferred_username", r.Token.PreferredUsername,
 		"SELECT username FROM t_users WHERE external_id = $1", r.Token.Subject)
+
+	// ZZZ passes the request's pattern, so only Core's validation service refuses it.
+	r.code(r.call(http.MethodPost, "/workspaces", map[string]any{"workspaceName": "smoke-refused", "defaultCurrency": "ZZZ"}),
+		400, "an unknown currency is refused")
+	r.problem("VALIDATION_FAILED")
+	p := decode[problem](r)
+	r.check("the refusal names the field", len(p.Errors) > 0 && p.Errors[0].Field == "defaultCurrency", true)
 	return w.ID
 }
 
@@ -146,6 +161,7 @@ func (r *run) transfer(ws, cash, card, food string) {
 		"amount": 1, "occurredAt": r.now(), "kind": "EXPENSE",
 		"accountId": cash, "categoryId": food, "comment": nil,
 	}), 409, "a transfer leg refuses PUT through /operations")
+	r.problem("TRANSFER_VIA_OPERATIONS")
 	r.pause()
 }
 
@@ -203,12 +219,14 @@ func (r *run) lifecycle() {
 
 	r.Report.Note("NEW is not archivable, and not yet active")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 409, "archive from NEW is refused")
+	r.problem("WORKSPACE_STATUS_CONFLICT")
 	r.code(r.call(http.MethodDelete, "/workspaces/"+ws+"/archive", nil), 409, "unarchive from NEW is refused")
 	r.check("still NEW after both refusals", r.statusOf(ws), "NEW")
 
 	r.Report.Note("optimistic locking on the rename")
 	r.code(r.call(http.MethodPut, "/workspaces/"+ws, map[string]any{"version": 99, "workspaceName": "stale", "defaultCurrency": "EUR"}),
 		409, "a stale version is refused")
+	r.problem("VERSION_CONFLICT")
 	r.check("the refused rename changed nothing", r.statusOf(ws), "NEW")
 	r.code(r.call(http.MethodPut, "/workspaces/"+ws, map[string]any{"version": 0, "workspaceName": "smoke-renamed", "defaultCurrency": "EUR"}),
 		200, "rename with the current version")
@@ -228,6 +246,7 @@ func (r *run) lifecycle() {
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 200, "archiving again is idempotent at the target")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("denied", nil)), 409,
 		"a command into an ARCHIVED workspace is refused")
+	r.problem("WORKSPACE_READ_ONLY")
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/accounts?includeArchived=true", nil), 200, "reads still answer while ARCHIVED")
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/accounts", nil), 200,
 		"statistics still answer while ARCHIVED")
@@ -240,11 +259,14 @@ func (r *run) lifecycle() {
 
 	r.Report.Note("deletion is guarded by the version, and terminal")
 	r.code(r.call(http.MethodDelete, "/workspaces/"+ws, nil), 400, "delete without a version is refused")
+	r.problem("MALFORMED_REQUEST")
 	r.code(r.call(http.MethodDelete, "/workspaces/"+ws+"?version=99", nil), 409, "delete with a stale version is refused")
+	r.problem("VERSION_CONFLICT")
 	r.check("still ACTIVE after both refusals", r.statusOf(ws), "ACTIVE")
 	v := r.versionOf(ws)
 	r.code(r.deleteWorkspace(ws, v), 204, fmt.Sprintf("deleted with the current version (%d)", v))
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws, nil), 404, "a DELETED workspace is gone from the API")
+	r.problem("NOT_FOUND")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 404, "archiving it answers 404, not 409")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("gone", nil)), 404, "a command answers 404")
 	r.call(http.MethodGet, "/workspaces?size=100", nil)
@@ -269,6 +291,14 @@ func (r *run) check(label string, got, want any) {
 func (r *run) code(resp apiclient.Response, want int, label string) {
 	r.last = resp
 	r.check(label, resp.Code, want)
+}
+
+// problem checks the last answer is Core's ProblemDetail: its code, and a trace id to quote.
+func (r *run) problem(code string) {
+	p := decode[problem](r)
+	r.check("  a problem+json body", r.last.Header.Get("Content-Type"), "application/problem+json")
+	r.check("  its code is "+code, p.Code, code)
+	r.check("  it carries a traceId", p.TraceID != "", true)
 }
 
 func (r *run) dbCheck(label string, want any, query string, args ...any) {
