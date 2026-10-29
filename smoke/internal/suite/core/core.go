@@ -24,6 +24,15 @@ type entity struct {
 	ID string `json:"id"`
 }
 
+type userID struct {
+	UserID string `json:"userId"`
+}
+
+type profile struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+}
+
 type category struct {
 	ID         string  `json:"id"`
 	SystemCode *string `json:"systemCode"`
@@ -84,11 +93,20 @@ func Run(ctx context.Context, t suite.Target) {
 }
 
 func (r *run) authentication() {
-	r.Report.Section("0. Authentication")
+	r.Report.Section("0. Authentication and the caller")
 	r.code(r.Client.Anonymous().Do(r.ctx, http.MethodGet, api+"/workspaces", nil), 401, "no token")
 	r.code(r.Client.WithToken("not.a.token").Do(r.ctx, http.MethodGet, api+"/workspaces", nil), 401, "a forged token")
 	r.dbCheck("the V0004 stub user is gone (V0012)", int64(0),
 		"SELECT count(*) FROM t_users WHERE external_id = 'stub:testuser'")
+
+	r.code(r.call(http.MethodGet, "/users/current/id", nil), 200, "the caller's id resolved")
+	id := decode[userID](r).UserID
+	r.dbCheck("it is the id of the token's t_users row", id,
+		"SELECT id::text FROM t_users WHERE external_id = $1", r.Token.Subject)
+	r.code(r.call(http.MethodGet, "/users/current", nil), 200, "the caller's profile read")
+	p := decode[profile](r)
+	r.check("the profile names the same user", p.ID, id)
+	r.check("its username is the token's preferred_username", p.Username, r.Token.PreferredUsername)
 }
 
 func (r *run) createWorkspace() string {

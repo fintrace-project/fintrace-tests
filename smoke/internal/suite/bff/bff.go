@@ -41,6 +41,10 @@ type problem struct {
 	Code string `json:"code"`
 }
 
+type profile struct {
+	Username string `json:"username"`
+}
+
 type account struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -138,6 +142,11 @@ func (r *run) coreThroughTheEdge() {
 	r.securityHeaders("Core's 201")
 	r.code(r.call(http.MethodGet, "/workspaces/"+w.ID, nil), 200, "read back")
 	r.check("the same workspace", decode[workspace](r).ID, w.ID)
+
+	r.code(r.call(http.MethodGet, "/users/current", nil), 200, "the caller's profile, through the edge")
+	r.check("names the token's user", decode[profile](r).Username, r.Token.PreferredUsername)
+	r.problem(r.call(http.MethodGet, "/users/current/id", nil), 404, "NOT_FOUND",
+		"the caller's id is not listed: only the BFF asks Core for it")
 }
 
 func (r *run) csrf() {
