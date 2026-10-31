@@ -38,7 +38,8 @@ type job struct {
 }
 
 type problem struct {
-	Code string `json:"code"`
+	Code    string `json:"code"`
+	TraceID string `json:"traceId"`
 }
 
 type profile struct {
@@ -108,6 +109,18 @@ func (r *run) authentication() {
 		"a forged token")
 	r.check("a forged token: WWW-Authenticate", r.last.Header.Get("WWW-Authenticate"), `Bearer error="invalid_token"`)
 	r.code(r.call(http.MethodGet, "/workspaces", nil), 200, "fintrace-test's token")
+
+	// The signed-in answer needs a browser session, which this suite never has; it is checked by hand.
+	r.problem(r.Client.Anonymous().Do(r.ctx, http.MethodGet, "/auth/session", nil), 401, "NO_SESSION",
+		"/auth/session without a session")
+	r.check("/auth/session: as problem+json", r.last.Header.Get("Content-Type"), "application/problem+json")
+	r.check("/auth/session: with a traceId", decode[problem](r).TraceID != "", true)
+	r.check("/auth/session: never cached", r.last.Header.Get("Cache-Control"), "no-store")
+	r.problem(r.Client.Do(r.ctx, http.MethodGet, "/auth/session", nil), 401, "NO_SESSION",
+		"/auth/session with fintrace-test's token: a token is not a session")
+	r.problem(r.Client.Anonymous().WithHeader("Origin", r.Client.Base()).
+		Do(r.ctx, http.MethodPost, "/auth/session", nil), 404, "NOT_FOUND",
+		"POST /auth/session: GET only, the rest falls to the /auth/ fallback")
 }
 
 func (r *run) routing() {
