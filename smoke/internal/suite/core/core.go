@@ -46,7 +46,7 @@ type transfer struct {
 }
 
 type anchor struct {
-	Difference float64 `json:"difference"`
+	Difference *float64 `json:"difference"`
 }
 
 type balance struct {
@@ -187,7 +187,7 @@ func (r *run) anchor(ws, card string) {
 	r.Report.Section("6. Balance anchor on card: 30")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts/"+card+"/balance-anchors", map[string]any{"value": 30}),
 		201, "anchor created")
-	r.check("card's anchor has no unexplained difference", decode[anchor](r).Difference, 0.0)
+	r.check("card's first anchor answers a null difference", decode[anchor](r).Difference == nil, true)
 }
 
 func (r *run) balances(ws, cash, card string) {
