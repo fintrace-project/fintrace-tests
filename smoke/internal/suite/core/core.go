@@ -429,12 +429,12 @@ func (r *run) dbCheck(label string, want any, query string, args ...any) {
 	r.Report.Equal(label, got, want, nil)
 }
 
-// decode leaves the zero value on a body that does not parse; the checks that read it then fail
-// with the body shown.
+// decode fails on a body that does not parse, since its zero value would pass a check that something
+// is absent.
 func decode[T any](r *run) T {
 	var v T
 	if err := json.Unmarshal(r.last.Body, &v); err != nil {
-		r.Report.Info("could not read the %d response: %v", r.last.Code, err)
+		r.check(fmt.Sprintf("the %d response is readable", r.last.Code), err, nil)
 	}
 	return v
 }
