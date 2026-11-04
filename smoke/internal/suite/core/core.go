@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/fintrace-project/fintrace-tests/smoke/internal/apiclient"
@@ -54,6 +56,25 @@ type balance struct {
 	Balance   float64 `json:"balance"`
 }
 
+type wholeList[T any] struct {
+	Items []T             `json:"items"`
+	Page  json.RawMessage `json:"page"`
+}
+
+type feedItem struct {
+	Type   string `json:"type"`
+	Cursor string `json:"cursor"`
+	Side   string `json:"side"`
+}
+
+type feedPage struct {
+	Items []feedItem `json:"items"`
+	Page  struct {
+		Older *string `json:"older"`
+		Newer *string `json:"newer"`
+	} `json:"page"`
+}
+
 type problem struct {
 	Code    string `json:"code"`
 	TraceID string `json:"traceId"`
@@ -70,7 +91,7 @@ type run struct {
 	deleted map[string]bool
 }
 
-// Run walks the data path (sections 1-9) and a workspace's whole lifecycle (section 10). Every
+// Run walks the data path (sections 1-10) and a workspace's whole lifecycle (section 11). Every
 // workspace it creates is deleted before it returns, whether or not the checks passed.
 func Run(ctx context.Context, t suite.Target) {
 	r := &run{Target: t, ctx: ctx, deleted: map[string]bool{}}
@@ -86,9 +107,10 @@ func Run(ctx context.Context, t suite.Target) {
 	r.balances(ws, cash, card)
 	r.replay(ws, cash)
 	r.recorder(ws)
+	r.feeds(ws, cash, card)
 	r.lifecycle()
 
-	r.Report.Section("11. Clean up")
+	r.Report.Section("12. Clean up")
 	r.code(r.deleteWorkspace(ws, r.versionOf(ws)), 204, "the data workspace is deleted too")
 }
 
@@ -188,6 +210,10 @@ func (r *run) anchor(ws, card string) {
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts/"+card+"/balance-anchors", map[string]any{"value": 30}),
 		201, "anchor created")
 	r.check("card's first anchor answers a null difference", decode[anchor](r).Difference == nil, true)
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/accounts/"+card+"/balance-anchors", nil), 200, "card's anchors listed")
+	anchors := decode[wholeList[anchor]](r)
+	r.check("the list holds the one anchor", len(anchors.Items), 1)
+	r.check("the list answers whole, with no page", anchors.Page == nil, true)
 }
 
 func (r *run) balances(ws, cash, card string) {
@@ -225,8 +251,83 @@ func (r *run) recorder(ws string) {
 	}
 }
 
+func (r *run) feeds(ws, cash, card string) {
+	r.Report.Section("10. Feeds")
+	feed := "/workspaces/" + ws + "/feed"
+	cashFeed := "/workspaces/" + ws + "/accounts/" + cash + "/feed"
+	cardFeed := "/workspaces/" + ws + "/accounts/" + card + "/feed"
+
+	r.code(r.call(http.MethodGet, feed, nil), 200, "the workspace's feed")
+	r.check("the operation and the transfer, one item each", kinds(decode[feedPage](r)), "OPERATION,TRANSFER")
+	r.code(r.call(http.MethodGet, cashFeed, nil), 200, "cash's feed")
+	page := decode[feedPage](r)
+	r.check("cash: its anchor, the operation and the transfer", kinds(page), "BALANCE_ANCHOR,OPERATION,TRANSFER")
+	r.check("cash is the transfer's source", sideOf(page), "SOURCE")
+	r.code(r.call(http.MethodGet, cardFeed, nil), 200, "card's feed")
+	page = decode[feedPage](r)
+	r.check("card: its anchor and the transfer, a first anchor having no difference", kinds(page), "BALANCE_ANCHOR,TRANSFER")
+	r.check("card is the transfer's target", sideOf(page), "TARGET")
+	r.code(r.call(http.MethodGet, feed+"?kinds=BALANCE_ANCHOR", nil), 400, "a kind the workspace's feed never has is refused")
+
+	r.walk("the workspace's feed", feed)
+	r.walk("cash's feed", cashFeed)
+}
+
+// walk pages one item older and back, so a cursor is proved by the request it comes back in.
+func (r *run) walk(label, feed string) {
+	r.code(r.call(http.MethodGet, feed+"?size=1", nil), 200, label+": a page of one")
+	first := decode[feedPage](r)
+	r.check(label+": one item", len(first.Items), 1)
+	r.check(label+": nothing newer than the first page", first.Page.Newer == nil, true)
+	if first.Page.Older == nil {
+		r.check(label+": a cursor to older items", "none", "one")
+		return
+	}
+	r.code(r.call(http.MethodGet, feed+"?size=1&older="+*first.Page.Older, nil), 200, label+": the next page")
+	second := decode[feedPage](r)
+	r.check(label+": another item", cursorOf(second) != cursorOf(first), true)
+	if second.Page.Newer == nil {
+		r.check(label+": a cursor back to newer items", "none", "one")
+		return
+	}
+	r.code(r.call(http.MethodGet, feed+"?size=1&newer="+*second.Page.Newer, nil), 200, label+": back again")
+	r.check(label+": the first item again", cursorOf(decode[feedPage](r)), cursorOf(first))
+}
+
+func kinds(p feedPage) string {
+	var found []string
+	for _, item := range p.Items {
+		found = append(found, item.Type)
+	}
+	slices.Sort(found)
+	return strings.Join(found, ",")
+}
+
+func sideOf(p feedPage) string {
+	for _, item := range p.Items {
+		if item.Type == "TRANSFER" {
+			return item.Side
+		}
+	}
+	return ""
+}
+
+func cursorOf(p feedPage) string {
+	if len(p.Items) == 0 {
+		return ""
+	}
+	return p.Items[0].Cursor
+}
+
+func (r *run) lists(ws, query string) bool {
+	r.code(r.call(http.MethodGet, "/workspaces"+query, nil), 200, "workspaces listed"+query)
+	list := decode[wholeList[workspace]](r)
+	r.check("the list answers whole, with no page", list.Page == nil, true)
+	return slices.ContainsFunc(list.Items, func(w workspace) bool { return w.ID == ws })
+}
+
 func (r *run) lifecycle() {
-	r.Report.Section("10. Workspace lifecycle: NEW -> ACTIVE <-> ARCHIVED -> DELETED")
+	r.Report.Section("11. Workspace lifecycle: NEW -> ACTIVE <-> ARCHIVED -> DELETED")
 	r.code(r.call(http.MethodPost, "/workspaces", map[string]any{"workspaceName": "smoke-lifecycle", "defaultCurrency": "EUR"}),
 		201, "second workspace created")
 	w := decode[workspace](r)
@@ -261,6 +362,8 @@ func (r *run) lifecycle() {
 	r.Report.Note("ARCHIVED is read-only system-wide")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 200, "archived")
 	r.check("status is ARCHIVED", r.statusOf(ws), "ARCHIVED")
+	r.check("hidden from the listing by default", r.lists(ws, ""), false)
+	r.check("listed when asked for", r.lists(ws, "?includeArchived=true"), true)
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 200, "archiving again is idempotent at the target")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("denied", nil)), 409,
 		"a command into an ARCHIVED workspace is refused")
@@ -287,12 +390,7 @@ func (r *run) lifecycle() {
 	r.problem("NOT_FOUND")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 404, "archiving it answers 404, not 409")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("gone", nil)), 404, "a command answers 404")
-	r.call(http.MethodGet, "/workspaces?size=100", nil)
-	listed := false
-	for _, w := range decode[[]workspace](r) {
-		listed = listed || w.ID == ws
-	}
-	r.check("it is absent from the caller's listing", listed, false)
+	r.check("it is absent from the caller's listing, archived ones included", r.lists(ws, "?includeArchived=true"), false)
 	r.dbCheck("the row survives as DELETED with deleted_at set, for the retention job", true,
 		"SELECT status = 'DELETED' AND deleted_at IS NOT NULL FROM t_workspaces WHERE id = $1", ws)
 }

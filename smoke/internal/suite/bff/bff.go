@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -59,6 +60,16 @@ type balance struct {
 	Balance   float64 `json:"balance"`
 }
 
+type feedPage struct {
+	Items []struct {
+		Cursor string `json:"cursor"`
+	} `json:"items"`
+	Page struct {
+		Older *string `json:"older"`
+		Newer *string `json:"newer"`
+	} `json:"page"`
+}
+
 type run struct {
 	suite.Target
 	ctx     context.Context
@@ -82,6 +93,7 @@ func Run(ctx context.Context, t suite.Target) {
 	if ok {
 		if ws := r.importS(s); ws != "" {
 			accounts := r.balances(ws, s.Expected)
+			r.feeds(ws, accounts)
 			r.firstEntry(ws, accounts)
 			r.reimport(ws, s)
 			r.behindTheAPI(ws)
@@ -155,6 +167,11 @@ func (r *run) coreThroughTheEdge() {
 	r.securityHeaders("Core's 201")
 	r.code(r.call(http.MethodGet, "/workspaces/"+w.ID, nil), 200, "read back")
 	r.check("the same workspace", decode[workspace](r).ID, w.ID)
+	r.code(r.call(http.MethodGet, "/workspaces?includeArchived=true", nil), 200, "workspaces listed, the query passed on")
+	listed := decode[struct {
+		Items []workspace `json:"items"`
+	}](r)
+	r.check("the list holds it", slices.ContainsFunc(listed.Items, func(each workspace) bool { return each.ID == w.ID }), true)
 
 	r.code(r.call(http.MethodGet, "/users/current", nil), 200, "the caller's profile, through the edge")
 	r.check("names the token's user", decode[profile](r).Username, r.Token.PreferredUsername)
@@ -226,6 +243,42 @@ func (r *run) balances(ws string, want dump.Expected) []account {
 
 // The user's first entry after the import: an expense moves its account's balance by exactly its
 // amount, and no other.
+func (r *run) feeds(ws string, accounts []account) {
+	r.Report.Section("6b. S end to end: both feeds through the BFF")
+	r.walk("the workspace's feed", "/workspaces/"+ws+"/feed")
+	if len(accounts) == 0 {
+		r.check("an account to read the feed of", "none", "one")
+		return
+	}
+	r.walk(accounts[0].Name+"'s feed", "/workspaces/"+ws+"/accounts/"+accounts[0].ID+"/feed")
+}
+
+// walk pages one item older and back, so a cursor is proved by the request it comes back in.
+func (r *run) walk(label, feed string) {
+	r.code(r.call(http.MethodGet, feed+"?size=1", nil), 200, label+": a page of one")
+	first := decode[feedPage](r)
+	r.check(label+": one item", len(first.Items), 1)
+	if first.Page.Older == nil {
+		r.check(label+": a cursor to older items", "none", "one")
+		return
+	}
+	r.code(r.call(http.MethodGet, feed+"?size=1&older="+*first.Page.Older, nil), 200, label+": the next page")
+	second := decode[feedPage](r)
+	if second.Page.Newer == nil {
+		r.check(label+": a cursor back to newer items", "none", "one")
+		return
+	}
+	r.code(r.call(http.MethodGet, feed+"?size=1&newer="+*second.Page.Newer, nil), 200, label+": back again")
+	r.check(label+": the first item again", cursorOf(decode[feedPage](r)), cursorOf(first))
+}
+
+func cursorOf(p feedPage) string {
+	if len(p.Items) == 0 {
+		return ""
+	}
+	return p.Items[0].Cursor
+}
+
 func (r *run) firstEntry(ws string, accounts []account) {
 	r.Report.Section("7. S end to end: a first entry after the import")
 	var target account
