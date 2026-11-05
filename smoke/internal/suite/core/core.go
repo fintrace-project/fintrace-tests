@@ -165,8 +165,10 @@ func (r *run) accounts(ws string) (cash, card string) {
 func (r *run) category(ws string) string {
 	r.Report.Section("3. Category under the expense root")
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/categories?includeArchived=false", nil), 200, "categories listed")
+	categories := decode[wholeList[category]](r)
+	r.check("the list answers whole, with no page", categories.Page == nil, true)
 	var root string
-	for _, c := range decode[[]category](r) {
+	for _, c := range categories.Items {
 		if c.SystemCode != nil && *c.SystemCode == "EXPENSE_ROOT" {
 			root = c.ID
 		}

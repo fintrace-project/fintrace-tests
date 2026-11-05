@@ -133,7 +133,9 @@ func (r *run) importDump(ws string, s dump.Dump) {
 func (r *run) balances(ws string, want dump.Expected) {
 	r.Report.Section("5. Every account's balance equals S's expected one")
 	r.code(r.core(http.MethodGet, "/workspaces/"+ws+"/accounts?includeArchived=true", nil), 200, "accounts listed")
-	accounts := decode[[]account](r)
+	accounts := decode[struct {
+		Items []account `json:"items"`
+	}](r).Items
 	r.check("as many accounts as S expects", len(accounts), len(want.Accounts))
 	r.code(r.core(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/accounts?includeArchived=true", nil), 200, "balances read")
 	balances := decode[[]balance](r)

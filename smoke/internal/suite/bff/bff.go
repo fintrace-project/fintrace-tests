@@ -222,7 +222,9 @@ func (r *run) importS(s dump.Dump) string {
 func (r *run) balances(ws string, want dump.Expected) []account {
 	r.Report.Section("6. S end to end: every balance read back through the BFF")
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/accounts?includeArchived=true", nil), 200, "accounts listed")
-	accounts := decode[[]account](r)
+	accounts := decode[struct {
+		Items []account `json:"items"`
+	}](r).Items
 	r.check("as many accounts as S expects", len(accounts), len(want.Accounts))
 	balances := r.readBalances(ws)
 
