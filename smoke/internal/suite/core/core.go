@@ -339,10 +339,12 @@ func (r *run) lifecycle() {
 	r.check("starts at version 0", w.Version, 0)
 
 	r.Report.Note("NEW is not archivable, and not yet active")
-	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 409, "archive from NEW is refused")
+	r.code(r.archive(http.MethodPost, ws, 0), 409, "archive from NEW is refused")
 	r.problem("WORKSPACE_STATUS_CONFLICT")
-	r.code(r.call(http.MethodDelete, "/workspaces/"+ws+"/archive", nil), 409, "unarchive from NEW is refused")
+	r.code(r.archive(http.MethodDelete, ws, 0), 409, "unarchive from NEW is refused")
+	r.problem("WORKSPACE_STATUS_CONFLICT")
 	r.check("still NEW after both refusals", r.statusOf(ws), "NEW")
+	r.check("neither refusal bumped the version", r.versionOf(ws), 0)
 
 	r.Report.Note("optimistic locking on the rename")
 	r.code(r.call(http.MethodPut, "/workspaces/"+ws, map[string]any{"version": 99, "workspaceName": "stale", "defaultCurrency": "EUR"}),
@@ -361,12 +363,24 @@ func (r *run) lifecycle() {
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("wallet", nil)), 201, "account created")
 	r.check("NEW -> ACTIVE at the first command, with no endpoint for it", r.statusOf(ws), "ACTIVE")
 
+	r.Report.Note("archive and unarchive are guarded by the version too")
+	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 400, "archive without a version is refused")
+	r.problem("MALFORMED_REQUEST")
+	r.code(r.call(http.MethodDelete, "/workspaces/"+ws+"/archive", nil), 400, "unarchive without a version is refused")
+	r.problem("MALFORMED_REQUEST")
+	r.code(r.archive(http.MethodPost, ws, 99), 409, "archive with a stale version is refused")
+	r.problem("VERSION_CONFLICT")
+	r.check("still ACTIVE after the refusals", r.statusOf(ws), "ACTIVE")
+
 	r.Report.Note("ARCHIVED is read-only system-wide")
-	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 200, "archived")
+	sent := r.versionOf(ws)
+	r.code(r.archive(http.MethodPost, ws, sent), 200, fmt.Sprintf("archived with the current version (%d)", sent))
+	archived := r.versionOf(ws)
 	r.check("status is ARCHIVED", r.statusOf(ws), "ARCHIVED")
 	r.check("hidden from the listing by default", r.lists(ws, ""), false)
 	r.check("listed when asked for", r.lists(ws, "?includeArchived=true"), true)
-	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 200, "archiving again is idempotent at the target")
+	r.code(r.archive(http.MethodPost, ws, sent), 200, "archiving again, with the version first sent, is idempotent at the target")
+	r.check("the no-op bumped nothing", r.versionOf(ws), archived)
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("denied", nil)), 409,
 		"a command into an ARCHIVED workspace is refused")
 	r.problem("WORKSPACE_READ_ONLY")
@@ -375,9 +389,11 @@ func (r *run) lifecycle() {
 		"statistics still answer while ARCHIVED")
 
 	r.Report.Note("back to ACTIVE, which is the recoverable path")
-	r.code(r.call(http.MethodDelete, "/workspaces/"+ws+"/archive", nil), 200, "unarchived")
+	r.code(r.archive(http.MethodDelete, ws, archived-1), 409, "unarchive with a stale version is refused")
+	r.problem("VERSION_CONFLICT")
+	r.code(r.archive(http.MethodDelete, ws, archived), 200, "unarchived with the current version")
 	r.check("status is ACTIVE again", r.statusOf(ws), "ACTIVE")
-	r.code(r.call(http.MethodDelete, "/workspaces/"+ws+"/archive", nil), 200, "unarchiving again is idempotent at the target")
+	r.code(r.archive(http.MethodDelete, ws, archived), 200, "unarchiving again is idempotent at the target")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("allowed", nil)), 201, "commands are accepted again")
 
 	r.Report.Note("deletion is guarded by the version, and terminal")
@@ -390,7 +406,7 @@ func (r *run) lifecycle() {
 	r.code(r.deleteWorkspace(ws, v), 204, fmt.Sprintf("deleted with the current version (%d)", v))
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws, nil), 404, "a DELETED workspace is gone from the API")
 	r.problem("NOT_FOUND")
-	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/archive", nil), 404, "archiving it answers 404, not 409")
+	r.code(r.archive(http.MethodPost, ws, v+1), 404, "archiving it answers 404, not 409")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts", account("gone", nil)), 404, "a command answers 404")
 	r.check("it is absent from the caller's listing, archived ones included", r.lists(ws, "?includeArchived=true"), false)
 	r.dbCheck("the row survives as DELETED with deleted_at set, for the retention job", true,
@@ -449,6 +465,11 @@ func (r *run) statusOf(ws string) string {
 func (r *run) versionOf(ws string) int64 {
 	r.call(http.MethodGet, "/workspaces/"+ws, nil)
 	return decode[workspace](r).Version
+}
+
+// POST archives, DELETE unarchives
+func (r *run) archive(method, ws string, version int64) apiclient.Response {
+	return r.call(method, fmt.Sprintf("/workspaces/%s/archive?version=%d", ws, version), nil)
 }
 
 func (r *run) deleteWorkspace(ws string, version int64) apiclient.Response {
