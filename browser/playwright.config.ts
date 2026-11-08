@@ -37,5 +37,12 @@ export default defineConfig({
       dependencies: ['sign-in'],
       use: { storageState: SESSION },
     },
+    // Last, because it ends the session every flow shares
+    {
+      name: 'sign-out',
+      testMatch: 'sign-out.last.ts',
+      dependencies: ['flows'],
+      use: { storageState: SESSION },
+    },
   ],
 })

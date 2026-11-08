@@ -1,9 +1,13 @@
-import { expect, localDaysAgo, returnToTab, test, type Category, type OperationItem } from './fixtures.ts'
-
-// The figure in the account's header, Core's balance as formatted; \D* keeps 0.00 from matching 10.00
-const balance = (pattern: string) => new RegExp(`^Balance ${pattern}$`)
-const NEGATIVE = (figure: string) => balance(`\\D*[−-]\\D*${figure.replace('.', '\\.')}`)
-const POSITIVE = (figure: string) => balance(`[^−\\d-]*${figure.replace('.', '\\.')}`)
+import {
+  expect,
+  localDaysAgo,
+  NEGATIVE,
+  POSITIVE,
+  returnToTab,
+  test,
+  type Category,
+  type OperationItem,
+} from './fixtures.ts'
 
 test('an expense is added back-dated, edited into an income and deleted, the balance following each', async ({
   page,

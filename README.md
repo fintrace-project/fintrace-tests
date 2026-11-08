@@ -69,6 +69,13 @@ unattended instead.
 - **`operations.spec.ts`** — on an account's page: an expense added back-dated, edited into an income,
   deleted, the balance following each; and an operation made elsewhere whose category the page has
   not read yet, shown with a placeholder and then its name, never its id.
+- **`swipes.spec.ts`** — real touch input on a feed row: left deletes, right opens a new one made from it.
+- **`accounts.spec.ts`** — rename, archive, taking no entries while archived, restore.
+- **`feed.spec.ts`** — a transfer as one row in both accounts, with no edit offered; an anchor that
+  disagrees with the operations.
+- **`workspaces.spec.ts`** — the lifecycle through the UI, from new to deleted; a stale save; an operation
+  refused after an archive elsewhere; a workspace that does not exist.
+- **`sign-out.last.ts`** — runs last, since it ends the session the flows share.
 
 Each flow sets up a workspace of its own through the BFF's `/api` on the browser's session, and
 deletes it afterwards, even when the flow failed. A failed flow keeps its trace in

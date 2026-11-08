@@ -1,4 +1,4 @@
-import { test as base, expect, type APIRequestContext, type Page } from '@playwright/test'
+import { test as base, expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 // Only the fields the flows read; the web UI's generated client is the contract, this is a test's view of it
 export interface Workspace {
@@ -40,8 +40,21 @@ export class Core {
     return this.call('POST', path, data)
   }
 
+  put<T>(path: string, data: unknown): Promise<T> {
+    return this.call('PUT', path, data)
+  }
+
   delete(path: string): Promise<void> {
     return this.call('DELETE', path)
+  }
+
+  // For a workspace the flow made through the UI and may already have deleted there
+  async deleteWorkspaceIfThere(id: string): Promise<void> {
+    const response = await this.request.get(`/api/v1/workspaces/${id}`)
+    if (response.ok()) {
+      const { version } = (await response.json()) as Workspace
+      await this.delete(`/workspaces/${id}?version=${version}`)
+    }
   }
 
   private async call<T>(method: string, path: string, data?: unknown): Promise<T> {
@@ -91,6 +104,29 @@ export const test = base.extend<{ core: Core; ledger: Ledger }>({
 })
 
 export { expect }
+
+// The figure in an account's header, Core's balance as formatted; \D* keeps 0.00 from matching 10.00
+const balance = (pattern: string) => new RegExp(`^Balance ${pattern}$`)
+export const NEGATIVE = (figure: string) => balance(`\\D*[−-]\\D*${figure.replace('.', '\\.')}`)
+export const POSITIVE = (figure: string) => balance(`[^−\\d-]*${figure.replace('.', '\\.')}`)
+
+// A real finger through the browser: the rows react to touch pointers only, which a mouse never is
+export async function swipe(page: Page, target: Locator, direction: 'left' | 'right'): Promise<void> {
+  const box = (await target.boundingBox())!
+  const y = box.y + box.height / 2
+  const [from, to] =
+    direction === 'left'
+      ? [box.x + box.width * 0.85, box.x + box.width * 0.15]
+      : [box.x + box.width * 0.15, box.x + box.width * 0.85]
+  const cdp = await page.context().newCDPSession(page)
+  const steps = 10
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from, y }] })
+  for (let step = 1; step <= steps; step++) {
+    const x = from + ((to - from) * step) / steps
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] })
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+}
 
 // A floating `YYYY-MM-DDTHH:mm` in the browser's zone, `days` before now
 export function localDaysAgo(page: Page, days: number): Promise<string> {
