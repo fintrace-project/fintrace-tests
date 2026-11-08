@@ -1,10 +1,6 @@
 import { expect, localDaysAgo, NEGATIVE, POSITIVE, test, type Account } from './fixtures.ts'
 
-test('a transfer is one row in both accounts, moves both balances and offers no edit', async ({
-  page,
-  core,
-  ledger,
-}) => {
+test('a transfer is one row in both accounts and moves both balances', async ({ page, core, ledger }) => {
   const { workspace, account } = ledger
   const savings = await core.post<Account>(`/workspaces/${workspace.id}/accounts`, {
     name: 'Savings',
@@ -25,7 +21,6 @@ test('a transfer is one row in both accounts, moves both balances and offers no 
     await page.goto(`/w/${workspace.id}/accounts/${id}`)
     await expect(page.getByText(/^Balance /)).toHaveText(figure)
     await expect(page.getByText('Wallet → Savings')).toHaveCount(1)
-    await expect(page.getByRole('button', { name: new RegExp(comment) })).toHaveCount(0)
   }
 })
 

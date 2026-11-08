@@ -70,8 +70,10 @@ unattended instead.
   deleted, the balance following each; and an operation made elsewhere whose category the page has
   not read yet, shown with a placeholder and then its name, never its id.
 - **`swipes.spec.ts`** — real touch input on a feed row: left deletes, right opens a new one made from it.
+- **`transfers.spec.ts`** — add, edit, swap and delete with both balances, two currencies with the rate,
+  a single account, both swipes, and no edit across an archived account.
 - **`accounts.spec.ts`** — rename, archive, taking no entries while archived, restore.
-- **`feed.spec.ts`** — a transfer as one row in both accounts, with no edit offered; an anchor that
+- **`feed.spec.ts`** — a transfer as one row in both accounts; an anchor that
   disagrees with the operations.
 - **`workspaces.spec.ts`** — the lifecycle through the UI, from new to deleted; a stale save; an operation
   refused after an archive elsewhere; a workspace that does not exist.
