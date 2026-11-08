@@ -37,3 +37,26 @@ jobs:
 
       - name: Build
         run: go build ./cmd/fintrace-smoke
+
+  browser:
+    name: fintrace-browser
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: browser
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: browser/.nvmrc
+          cache: npm
+          cache-dependency-path: browser/package-lock.json
+
+      - run: npm ci
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Type-check
+        run: npm run typecheck
