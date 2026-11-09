@@ -128,6 +128,16 @@ export async function swipe(page: Page, target: Locator, direction: 'left' | 'ri
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
 
+// Held past the 500 ms a tile waits for, then lifted
+export async function longPress(page: Page, target: Locator): Promise<void> {
+  const box = (await target.boundingBox())!
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] })
+  await page.waitForTimeout(700)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+}
+
 // A floating `YYYY-MM-DDTHH:mm` in the browser's zone, `days` before now
 export function localDaysAgo(page: Page, days: number): Promise<string> {
   return page.evaluate((days) => {
