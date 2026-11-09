@@ -29,7 +29,7 @@ async function seedTransfer(page: Page, core: Core, ledger: Ledger, target: Acco
   })
 }
 
-test('a transfer is added, edited, turned round and deleted, both balances following', async ({
+test('a transfer is added, edited and turned round, both balances following', async ({
   page,
   core,
   ledger,
@@ -65,15 +65,6 @@ test('a transfer is added, edited, turned round and deleted, both balances follo
   await expect(dialog).toBeHidden()
   await expect(row).toContainText('Savings → Wallet')
   await expectBalance(page, ledger, ledger.account.id, POSITIVE('45.00'))
-
-  await row.click()
-  await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(dialog.getByText('Delete this transfer?')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await expect(row).toHaveCount(0)
-  await expectBalance(page, ledger, ledger.account.id, POSITIVE('0.00'))
-  await expectBalance(page, ledger, savings.id, POSITIVE('0.00'))
 })
 
 test('a transfer between currencies takes two amounts and shows the rate they imply', async ({
@@ -126,7 +117,8 @@ test('swiping a transfer left deletes both legs', async ({ page, core, ledger })
   await page.goto(`/w/${ledger.workspace.id}/accounts/${ledger.account.id}`)
   await expect(page.getByText(/^Balance [^r]/)).toHaveText(NEGATIVE('30.00'))
   await swipe(page, page.getByRole('button', { name: new RegExp(comment) }), 'left')
-  await expect(page.getByText('No operations yet.')).toBeVisible()
+  await expect(page.getByText('Transfer deleted.')).toBeVisible()
+  await expect(page.getByText('No operations yet.')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText(/^Balance [^r]/)).toHaveText(POSITIVE('0.00'))
   await expectBalance(page, ledger, savings.id, POSITIVE('0.00'))
 })

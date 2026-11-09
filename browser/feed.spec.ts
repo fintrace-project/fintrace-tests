@@ -37,5 +37,5 @@ test('an anchor that disagrees with the operations shows what went unrecorded', 
   await page.goto(`/w/${workspace.id}/accounts/${account.id}`)
   await expect(page.getByText(POSITIVE('80.00'))).toBeVisible()
   await expect(page.getByText('Balance recorded')).toHaveCount(2)
-  await expect(page.getByText(/20\.00 unrecorded$/)).toHaveCount(1)
+  await expect(page.getByText(/20\.00 not accounted for$/)).toHaveCount(1)
 })

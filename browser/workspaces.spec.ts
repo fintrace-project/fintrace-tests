@@ -29,8 +29,8 @@ test('a workspace goes from new through archived to deleted, its first account c
     await page.goto(`/w/${id}/import`)
     await expect(page.getByText('Import is closed')).toBeVisible()
 
-    await page.goto(`/w/${id}`)
-    await page.getByRole('button', { name: 'Archive', exact: true }).click()
+    await page.goto(`/w/${id}/settings`)
+    await page.getByRole('button', { name: 'Archive workspace' }).click()
     const archived = page.getByText('This workspace is archived.')
     await expect(archived).toBeVisible()
     await page.goto(`/w/${id}/operations`)
@@ -80,7 +80,7 @@ test('a save over a workspace changed elsewhere is refused and offers a reload',
 
   await name.fill('Renamed here')
   await page.getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByText('This changed since the page loaded.')).toBeVisible()
+  await expect(page.getByText(/^This changed in another tab or device\./)).toBeVisible()
 
   await page.getByRole('button', { name: 'Reload' }).click()
   await expect(name).toHaveValue('Renamed elsewhere')

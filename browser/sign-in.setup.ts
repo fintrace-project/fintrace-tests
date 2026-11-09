@@ -7,7 +7,7 @@ setup('a visitor signs in through the realm and lands on their workspaces', asyn
   await page.goto('/')
   await expect(page).toHaveURL(/\/welcome$/)
   // Dismissed once here, the notice's cookie travels with the saved session
-  await page.getByRole('button', { name: 'Accept' }).click()
+  await page.getByRole('button', { name: 'Got it' }).click()
   await page.getByRole('link', { name: 'Sign in', exact: true }).filter({ visible: true }).first().click()
 
   if (credentials) {

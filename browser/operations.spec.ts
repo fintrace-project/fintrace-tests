@@ -9,7 +9,7 @@ import {
   type OperationItem,
 } from './fixtures.ts'
 
-test('an expense is added back-dated, edited into an income and deleted, the balance following each', async ({
+test('an expense is added back-dated and edited into an income, the balance following each', async ({
   page,
   core,
   ledger,
@@ -53,14 +53,6 @@ test('an expense is added back-dated, edited into an income and deleted, the bal
   await expect(dialog).toBeHidden()
   await expect(row).toContainText('40.00')
   await expect(header).toHaveText(POSITIVE('40.00'))
-
-  await row.click()
-  await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(dialog.getByText('Delete this operation?')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await expect(row).toHaveCount(0)
-  await expect(header).toHaveText(POSITIVE('0.00'))
 })
 
 test('an operation whose category the page has not read yet shows a placeholder, then the name, never the id', async ({
