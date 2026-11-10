@@ -1,4 +1,4 @@
-import { expect, POSITIVE, test } from './fixtures.ts'
+import { expect, POSITIVE, test, type OperationItem } from './fixtures.ts'
 
 test('a balance is recorded from the account page, and deleting it brings back the one before', async ({
   page,
@@ -24,7 +24,7 @@ test('a balance is recorded from the account page, and deleting it brings back t
 
   await expect(header).toHaveText(POSITIVE('80.00'))
   await expect(page.getByText('Balance recorded')).toHaveCount(2)
-  await expect(page.getByText(/20\.00 not accounted for$/)).toHaveCount(1)
+  await expect(page.getByRole('button', { name: /^Not accounted for/ })).toContainText('20.00')
 
   // Only the latest may be deleted (§10.4), so only its row offers it
   const remove = page.getByRole('button', { name: 'Delete the latest recorded balance' })
@@ -38,7 +38,36 @@ test('a balance is recorded from the account page, and deleting it brings back t
 
   await expect(header).toHaveText(POSITIVE('100.00'))
   await expect(page.getByText('Balance recorded')).toHaveCount(1)
-  await expect(page.getByText(/not accounted for$/)).toHaveCount(0)
+  await expect(page.getByText('Not accounted for')).toHaveCount(0)
+})
+
+test('a difference is booked as an operation just before its anchor, which leaves the balance as it was', async ({
+  page,
+  core,
+  ledger,
+}) => {
+  const { workspace, account } = ledger
+  const anchors = `/workspaces/${workspace.id}/accounts/${account.id}/balance-anchors`
+  await core.post(anchors, { value: 100 })
+  // Within the same minute as the first: the operation's time has to fit between the two
+  const counted = await core.post<{ occurredAt: string }>(anchors, { value: 80 })
+
+  await page.goto(`/w/${workspace.id}/accounts/${account.id}`)
+  const header = page.getByText(/^Balance (?!recorded)/)
+  await expect(header).toHaveText(POSITIVE('80.00'))
+
+  await page.getByRole('button', { name: /^Not accounted for/ }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('Amount')).toHaveValue('20')
+  await dialog.getByRole('button', { name: 'Add expense' }).click()
+  await expect(dialog).toBeHidden()
+
+  // Explained now, so nothing is left unaccounted for, and the anchor still says what was counted
+  await expect(page.getByText('Not accounted for')).toHaveCount(0)
+  await expect(header).toHaveText(POSITIVE('80.00'))
+  const feed = await core.get<{ items: OperationItem[] }>(`/workspaces/${workspace.id}/feed`)
+  const booked = feed.items.find((item) => item.type === 'OPERATION')!
+  expect(booked.occurredAt < counted.occurredAt).toBe(true)
 })
 
 test('the arrows step through every recorded balance, one with no difference included', async ({
@@ -60,7 +89,7 @@ test('the arrows step through every recorded balance, one with no difference inc
   await older.click()
   await expect(page).toHaveURL(/[?&]at=/)
   await expect(marked).toContainText('Balance recorded')
-  await expect(marked).not.toContainText('not accounted for')
+  await expect(page.getByText('Not accounted for')).toHaveCount(0)
   // The newest anchor, so the one its row offers to delete
   await expect(marked.getByRole('button', { name: 'Delete the latest recorded balance' })).toBeVisible()
 

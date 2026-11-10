@@ -211,7 +211,9 @@ func (r *run) anchor(ws, card string) {
 	r.Report.Section("6. Balance anchor on card: 30")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/accounts/"+card+"/balance-anchors", map[string]any{"value": 30}),
 		201, "anchor created")
-	r.check("card's first anchor answers a null difference", decode[anchor](r).Difference == nil, true)
+	// Measured against the 30 transferred in before it, not answered null as an opening anchor would be (§4.6)
+	difference := decode[anchor](r).Difference
+	r.check("card's first anchor is measured against the transfer before it", difference != nil && *difference == 0, true)
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/accounts/"+card+"/balance-anchors", nil), 200, "card's anchors listed")
 	anchors := decode[wholeList[anchor]](r)
 	r.check("the list holds the one anchor", len(anchors.Items), 1)
@@ -267,7 +269,7 @@ func (r *run) feeds(ws, cash, card string) {
 	r.check("cash is the transfer's source", sideOf(page), "SOURCE")
 	r.code(r.call(http.MethodGet, cardFeed, nil), 200, "card's feed")
 	page = decode[feedPage](r)
-	r.check("card: its anchor and the transfer, a first anchor having no difference", kinds(page), "BALANCE_ANCHOR,TRANSFER")
+	r.check("card: its anchor and the transfer, a zero difference being no item", kinds(page), "BALANCE_ANCHOR,TRANSFER")
 	r.check("card is the transfer's target", sideOf(page), "TARGET")
 	r.code(r.call(http.MethodGet, feed+"?kinds=BALANCE_ANCHOR", nil), 400, "a kind the workspace's feed never has is refused")
 
