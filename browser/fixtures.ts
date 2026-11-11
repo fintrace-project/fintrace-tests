@@ -4,6 +4,7 @@ import { test as base, expect, type APIRequestContext, type Locator, type Page }
 export interface Workspace {
   id: string
   version: number
+  status: string
 }
 export interface Account {
   id: string

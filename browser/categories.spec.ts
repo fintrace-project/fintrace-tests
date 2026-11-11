@@ -116,7 +116,7 @@ test('archiving a category takes its subcategories out of the page and the picke
 
   await chooseFromMenu(page, tile(expenses(page), 'Food'), 'Archive')
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('cannot be undone')
+  await expect(dialog).toContainText('brings back this category alone')
   await dialog.getByRole('button', { name: 'Archive' }).click()
   await expect(dialog).toBeHidden()
   await expect(tile(expenses(page), 'Food')).toHaveCount(0)
@@ -126,6 +126,28 @@ test('archiving a category takes its subcategories out of the page and the picke
   const form = page.getByRole('dialog')
   await form.getByLabel('Search categories').fill('Cafes')
   await expect(form.getByText('No category found.')).toBeVisible()
+})
+
+test('an archived branch is restored from the top down, one category at a time', async ({
+  page,
+  core,
+  ledger,
+}) => {
+  const food = await addCategory(ledger, core, 'Food', ledger.expenseRoot.id)
+  await addCategory(ledger, core, 'Cafes', food.id)
+  await core.delete(`/workspaces/${ledger.workspace.id}/categories/${food.id}`)
+  await openPage(page, ledger)
+
+  // Only Food: Cafes, under an archived parent, would have nowhere to show (§4.7)
+  await expenses(page).getByRole('button', { name: '1 archived' }).click()
+  await expect(expenses(page).getByText('Food › Cafes')).toHaveCount(0)
+  await expenses(page).getByRole('button', { name: 'Restore Food' }).click()
+  await expect(tile(expenses(page), 'Food')).toBeVisible()
+
+  await expenses(page).getByRole('button', { name: 'Restore Cafes' }).click()
+  await expect(expenses(page).getByRole('button', { name: /archived$/ })).toHaveCount(0)
+  await tile(expenses(page), 'Food').click()
+  await expect(tile(expenses(page), 'Cafes')).toBeVisible()
 })
 
 test('a system category offers no actions and says why', async ({ page, ledger }) => {

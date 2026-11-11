@@ -101,7 +101,8 @@ test('an operation submitted after the workspace was archived elsewhere is refus
   await core.post(`/workspaces/${workspace.id}/archive?version=${current.version}`, undefined)
 
   await dialog.getByRole('button', { name: 'Add expense' }).click()
-  await expect(dialog).toContainText('not allowed to write')
+  // In the web UI's words, not Core's, which name the workspace's id
+  await expect(dialog).toContainText('This workspace cannot be changed now')
   await expect(dialog.getByLabel('Amount')).toHaveValue('25')
 })
 
@@ -129,6 +130,31 @@ test('an upload the BFF gave up on reads the workspace to say whether anything l
     await expect(page.getByText('The import did not finish, so nothing was kept.')).toBeVisible()
     await page.getByRole('button', { name: 'Choose another file' }).click()
     await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeVisible()
+  } finally {
+    await core.deleteWorkspaceIfThere(workspace.id)
+  }
+})
+
+test('a file the importer refuses says why in a card, the workspace still empty', async ({ page, core }) => {
+  const workspace = await core.post<Workspace>('/workspaces', {
+    workspaceName: `Browser flow ${Date.now()}`,
+    defaultCurrency: 'EUR',
+  })
+  try {
+    await page.goto(`/w/${workspace.id}/import`)
+    // Through the real importer: no SQLite header, so it refuses the file before Core sees anything
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'dump.mok',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('This is not a SQLite file.'),
+    })
+    await page.getByRole('button', { name: 'Import', exact: true }).click()
+
+    const card = page.getByRole('alert').filter({ hasText: 'Nothing was imported' })
+    await expect(card).toContainText('The uploaded file is not a .mok dump')
+    await expect(card).toContainText('is still empty')
+    const current = await core.get<Workspace>(`/workspaces/${workspace.id}`)
+    expect(current.status).toBe('NEW')
   } finally {
     await core.deleteWorkspaceIfThere(workspace.id)
   }
