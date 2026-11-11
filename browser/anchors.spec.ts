@@ -1,4 +1,4 @@
-import { expect, POSITIVE, test, type OperationItem } from './fixtures.ts'
+import { expect, localDaysAgo, POSITIVE, test, type OperationItem } from './fixtures.ts'
 
 test('a balance is recorded from the account page, and deleting it brings back the one before', async ({
   page,
@@ -68,6 +68,34 @@ test('a difference is booked as an operation just before its anchor, which leave
   const feed = await core.get<{ items: OperationItem[] }>(`/workspaces/${workspace.id}/feed`)
   const booked = feed.items.find((item) => item.type === 'OPERATION')!
   expect(booked.occurredAt < counted.occurredAt).toBe(true)
+})
+
+test('a booked difference moved out of its gap says so, and moved back books it still', async ({
+  page,
+  core,
+  ledger,
+}) => {
+  const { workspace, account } = ledger
+  const anchors = `/workspaces/${workspace.id}/accounts/${account.id}/balance-anchors`
+  // Usually in one minute, so the picker's minute alone would fall before the first and book its gap instead
+  await core.post(anchors, { value: 100 })
+  await core.post(anchors, { value: 80 })
+
+  await page.goto(`/w/${workspace.id}/accounts/${account.id}`)
+  await page.getByRole('button', { name: /^Not accounted for/ }).click()
+  const dialog = page.getByRole('dialog')
+  const date = dialog.locator('input[type="datetime-local"]')
+  const preset = await date.inputValue()
+
+  await date.fill(await localDaysAgo(page, 1))
+  await expect(dialog.getByRole('status')).toHaveText(/^Not after the previous balance/)
+  await date.fill(preset)
+  await expect(dialog.getByRole('status')).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Add expense' }).click()
+  await expect(dialog).toBeHidden()
+
+  await expect(page.getByText('Not accounted for')).toHaveCount(0)
+  await expect(page.getByText(/^Balance (?!recorded)/)).toHaveText(POSITIVE('80.00'))
 })
 
 test('the arrows step through every recorded balance, one with no difference included', async ({

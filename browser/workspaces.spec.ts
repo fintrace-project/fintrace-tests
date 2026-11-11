@@ -105,6 +105,35 @@ test('an operation submitted after the workspace was archived elsewhere is refus
   await expect(dialog.getByLabel('Amount')).toHaveValue('25')
 })
 
+test('an upload the BFF gave up on reads the workspace to say whether anything landed', async ({
+  page,
+  core,
+}) => {
+  const workspace = await core.post<Workspace>('/workspaces', {
+    workspaceName: `Browser flow ${Date.now()}`,
+    defaultCurrency: 'EUR',
+  })
+  try {
+    // The importer is never reached, so the workspace stays NEW: what a timeout looks like when nothing landed
+    await page.route(`**/api/v1/workspaces/${workspace.id}/import`, (route) =>
+      route.fulfill({ status: 504, contentType: 'text/plain', body: 'Gateway Timeout' }),
+    )
+    await page.goto(`/w/${workspace.id}/import`)
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'dump.mok',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('not read'),
+    })
+    await page.getByRole('button', { name: 'Import', exact: true }).click()
+
+    await expect(page.getByText('The import did not finish, so nothing was kept.')).toBeVisible()
+    await page.getByRole('button', { name: 'Choose another file' }).click()
+    await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeVisible()
+  } finally {
+    await core.deleteWorkspaceIfThere(workspace.id)
+  }
+})
+
 test('a workspace that does not exist shows not found', async ({ page }) => {
   await page.goto('/w/00000000-0000-7000-8000-000000000000')
   await expect(page.getByText('Page not found')).toBeVisible()
