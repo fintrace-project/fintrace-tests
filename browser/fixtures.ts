@@ -111,20 +111,28 @@ const balance = (pattern: string) => new RegExp(`^Balance ${pattern}$`)
 export const NEGATIVE = (figure: string) => balance(`\\D*[−-]\\D*${figure.replace('.', '\\.')}`)
 export const POSITIVE = (figure: string) => balance(`[^−\\d-]*${figure.replace('.', '\\.')}`)
 
-// A real finger through the browser: the rows react to touch pointers only, which a mouse never is
-export async function swipe(page: Page, target: Locator, direction: 'left' | 'right'): Promise<void> {
+// A real finger through the browser: the rows react to touch pointers only, which a mouse never is. By default
+// most of the row's width at once; `distance` in pixels and a pause between steps make a short or slow one.
+// Each move lands about a frame (~16 ms) after the last, so a fast gesture is few, large `steps`
+export async function swipe(
+  page: Page,
+  target: Locator,
+  direction: 'left' | 'right',
+  { distance, steps = 10, stepPause = 0 }: { distance?: number; steps?: number; stepPause?: number } = {},
+): Promise<void> {
   const box = (await target.boundingBox())!
   const y = box.y + box.height / 2
-  const [from, to] =
-    direction === 'left'
-      ? [box.x + box.width * 0.85, box.x + box.width * 0.15]
-      : [box.x + box.width * 0.15, box.x + box.width * 0.85]
+  const travel = distance ?? box.width * 0.7
+  const from = direction === 'left' ? box.x + box.width * 0.85 : box.x + box.width * 0.15
+  const to = direction === 'left' ? from - travel : from + travel
   const cdp = await page.context().newCDPSession(page)
-  const steps = 10
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from, y }] })
   for (let step = 1; step <= steps; step++) {
     const x = from + ((to - from) * step) / steps
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] })
+    if (stepPause > 0) {
+      await page.waitForTimeout(stepPause)
+    }
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
