@@ -240,6 +240,26 @@ func (r *run) balances(ws string, want dump.Expected) []account {
 		r.check(w.Name+": currency", b.Currency, w.Currency)
 		r.check(w.Name+": balance", cents(b.Balance), cents(w.Balance))
 	}
+
+	// Each currency's total is the sum of its accounts' balances just read, both through the edge.
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/currencies?includeArchived=true", nil), 200,
+		"currency totals read")
+	totals := decode[struct {
+		Totals struct {
+			ByCurrency []struct {
+				Currency string  `json:"currency"`
+				Total    float64 `json:"total"`
+			} `json:"byCurrency"`
+		} `json:"totals"`
+	}](r).Totals.ByCurrency
+	sums := map[string]float64{}
+	for _, b := range balances {
+		sums[b.Currency] += b.Balance
+	}
+	r.check("one total per currency the accounts hold", len(totals), len(sums))
+	for _, t := range totals {
+		r.check(t.Currency+": the sum of its accounts", cents(t.Total), cents(sums[t.Currency]))
+	}
 	return accounts
 }
 
