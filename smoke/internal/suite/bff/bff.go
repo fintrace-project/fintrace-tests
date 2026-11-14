@@ -296,8 +296,9 @@ func (r *run) firstEntry(ws string, accounts []account) {
 	}
 	before := r.readBalances(ws)
 	const amount = 12.50
-	// Not before the import's final anchors, which carry today's balances.
-	occurredAt := time.Now().In(r.Zone).Format("2006-01-02T15:04:05")
+	// Not before the import's final anchors, which carry today's balances, and a minute back: Core refuses a
+	// future date by its own clock, which a deployed stack's need not share with this one.
+	occurredAt := time.Now().Add(-time.Minute).In(r.Zone).Format("2006-01-02T15:04:05")
 	r.code(r.call(http.MethodPost, "/workspaces/"+ws+"/operations", map[string]any{
 		"amount": amount, "occurredAt": occurredAt, "kind": "EXPENSE",
 		"accountId": target.ID, "categoryId": nil, "comment": "smoke: first entry",
