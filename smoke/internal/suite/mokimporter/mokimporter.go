@@ -138,7 +138,9 @@ func (r *run) balances(ws string, want dump.Expected) {
 	}](r).Items
 	r.check("as many accounts as S expects", len(accounts), len(want.Accounts))
 	r.code(r.core(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/accounts?includeArchived=true", nil), 200, "balances read")
-	balances := decode[[]balance](r)
+	balances := decode[struct {
+		Balances []balance `json:"balances"`
+	}](r).Balances
 
 	// Matched by name: S reuses a source uid, and Core's ids are the importer's own.
 	for _, w := range want.Accounts {

@@ -350,7 +350,9 @@ func (r *run) securityHeaders(label string) {
 func (r *run) readBalances(ws string) []balance {
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/accounts?includeArchived=true", nil), 200,
 		"balances read")
-	return decode[[]balance](r)
+	return decode[struct {
+		Balances []balance `json:"balances"`
+	}](r).Balances
 }
 
 func (r *run) upload(ws string, content []byte) apiclient.Response {

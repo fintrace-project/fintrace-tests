@@ -56,6 +56,22 @@ type balance struct {
 	Balance   float64 `json:"balance"`
 }
 
+type accountBalances struct {
+	AsOf     string    `json:"asOf"`
+	Balances []balance `json:"balances"`
+}
+
+type currencyTotals struct {
+	AsOf   string `json:"asOf"`
+	Totals struct {
+		ByCurrency []struct {
+			Currency string  `json:"currency"`
+			Total    float64 `json:"total"`
+		} `json:"byCurrency"`
+		Converted json.RawMessage `json:"converted"`
+	} `json:"totals"`
+}
+
 type wholeList[T any] struct {
 	Items []T             `json:"items"`
 	Page  json.RawMessage `json:"page"`
@@ -223,9 +239,26 @@ func (r *run) anchor(ws, card string) {
 func (r *run) balances(ws, cash, card string) {
 	r.Report.Section("7. Balances")
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/accounts", nil), 200, "balances read")
-	b := decode[[]balance](r)
+	b := decode[accountBalances](r).Balances
 	r.check("cash = 100 - 12.50 - 30", balanceOf(b, cash), 57.5)
 	r.check("card = 30", balanceOf(b, card), 30.0)
+
+	r.Report.Note("totals per currency")
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/currencies", nil), 200, "currency totals read")
+	t := decode[currencyTotals](r)
+	r.check("one currency, the accounts' EUR", len(t.Totals.ByCurrency), 1)
+	if len(t.Totals.ByCurrency) == 1 {
+		r.check("EUR = cash + card", t.Totals.ByCurrency[0].Total, 87.5)
+	}
+	// Present and null until conversion lands (§11.4), not left out.
+	r.check("converted is null", string(t.Totals.Converted), "null")
+
+	// Before the workspace existed: the date is echoed, and EUR is listed at zero rather than dropped.
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/currencies?asOf=2000-01-01", nil), 200,
+		"currency totals read for a past date")
+	past := decode[currencyTotals](r)
+	r.check("asOf is echoed", past.AsOf, "2000-01-01")
+	r.check("EUR listed at zero", len(past.Totals.ByCurrency) == 1 && past.Totals.ByCurrency[0].Total == 0, true)
 }
 
 func (r *run) replay(ws, cash string) {
@@ -238,7 +271,7 @@ func (r *run) replay(ws, cash string) {
 	r.code(r.Client.Do(r.ctx, http.MethodPost, "/admin"+api+"/workspaces/"+ws+"/replay", nil), want,
 		fmt.Sprintf("replay (token has fintrace:admin: %t)", admin))
 	r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/accounts", nil)
-	r.check("cash unchanged after the replay attempt", balanceOf(decode[[]balance](r), cash), 57.5)
+	r.check("cash unchanged after the replay attempt", balanceOf(decode[accountBalances](r).Balances, cash), 57.5)
 }
 
 func (r *run) recorder(ws string) {
