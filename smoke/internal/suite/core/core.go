@@ -61,6 +61,20 @@ type accountBalances struct {
 	Balances []balance `json:"balances"`
 }
 
+type balanceSeries struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Buckets []struct {
+		Start   string `json:"start"`
+		Balance struct {
+			ByCurrency []struct {
+				Currency string  `json:"currency"`
+				Total    float64 `json:"total"`
+			} `json:"byCurrency"`
+		} `json:"balance"`
+	} `json:"buckets"`
+}
+
 type currencyTotals struct {
 	AsOf   string `json:"asOf"`
 	Totals struct {
@@ -259,6 +273,21 @@ func (r *run) balances(ws, cash, card string) {
 	past := decode[currencyTotals](r)
 	r.check("asOf is echoed", past.AsOf, "2000-01-01")
 	r.check("EUR listed at zero", len(past.Totals.ByCurrency) == 1 && past.Totals.ByCurrency[0].Total == 0, true)
+
+	// Everything happened this month, so the series starts and ends in it: one bucket, today's balance
+	r.Report.Note("balance over time")
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/series?granularity=MONTH", nil), 200,
+		"monthly series read")
+	s := decode[balanceSeries](r)
+	month := time.Now().In(r.Zone).Format("2006-01") + "-01"
+	r.check("from widened to this month's first day", s.From, month)
+	r.check("one bucket, this month's", len(s.Buckets) == 1 && s.Buckets[0].Start == month, true)
+	if len(s.Buckets) == 1 && len(s.Buckets[0].Balance.ByCurrency) == 1 {
+		r.check("its EUR balance = cash + card", s.Buckets[0].Balance.ByCurrency[0].Total, 87.5)
+	}
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/series?granularity=MONTH&from=2026-03-01&to=2026-01-01", nil),
+		400, "a series with from after to is refused")
+	r.problem("VALIDATION_FAILED")
 }
 
 func (r *run) replay(ws, cash string) {
