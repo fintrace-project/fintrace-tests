@@ -31,10 +31,11 @@ test('a short quick flick left deletes an operation', async ({ page, core, ledge
   await page.goto(`/w/${ledger.workspace.id}/accounts/${ledger.account.id}`)
   await expect(page.getByText(/^Balance /)).toHaveText(NEGATIVE('25.00'))
 
-  // 60 px in three frames, about 1.2 px/ms: short of the threshold, a flick by its speed
+  // 60 px in two frames, about 1.9 px/ms: short of the threshold, a flick by its speed. Two moves, not three,
+  // so a busy machine slowing each frame still leaves it well over 0.5 px/ms (it failed once at three)
   await swipe(page, page.getByRole('button', { name: new RegExp(comment) }), 'left', {
     distance: 60,
-    steps: 3,
+    steps: 2,
   })
   await expect(page.getByText('Operation deleted.')).toBeVisible()
   await expect(page.getByText('No operations yet.')).toBeVisible({ timeout: 10_000 })
