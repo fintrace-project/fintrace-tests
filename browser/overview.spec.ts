@@ -23,12 +23,19 @@ test('the overview totals the balances per currency, and an expense moves its cu
   await expect(rows.nth(0)).toContainText('€40.00')
   await expect(rows.nth(1)).toContainText('US$25.00')
 
-  // The workspace's own currency is the display one until a row is picked; the headline is its own total
+  // The workspace's own currency is the display one until a row is picked; the headline is its own total, and
+  // the balance chart beside it follows the pick
+  const panelFigure = page
+    .locator('section', { has: page.getByRole('heading', { name: 'Balance', exact: true }) })
+    .locator('p')
+    .first()
   await expect(rows.nth(0)).toHaveAttribute('aria-pressed', 'true')
   await expect(headline).toHaveText('€40.00')
+  await expect(panelFigure).toHaveText('€40.00')
   await rows.nth(1).click()
   await expect(rows.nth(1)).toHaveAttribute('aria-pressed', 'true')
   await expect(headline).toHaveText('US$25.00')
+  await expect(panelFigure).toHaveText('US$25.00')
   await expect(rows.nth(0)).toHaveAttribute('aria-pressed', 'false')
 
   await page.goto(`/w/${workspace.id}/accounts/${account.id}`)
