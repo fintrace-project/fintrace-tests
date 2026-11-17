@@ -260,6 +260,20 @@ func (r *run) balances(ws string, want dump.Expected) []account {
 	for _, t := range totals {
 		r.check(t.Currency+": the sum of its accounts", cents(t.Total), cents(sums[t.Currency]))
 	}
+
+	// The cashflow through the edge too: S's whole history by month, a count per currency the accounts hold
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/cashflow?granularity=MONTH&includeArchived=true", nil),
+		200, "monthly cashflow read")
+	flow := decode[struct {
+		Buckets []json.RawMessage `json:"buckets"`
+		Totals  struct {
+			Count []struct {
+				Currency string `json:"currency"`
+			} `json:"count"`
+		} `json:"totals"`
+	}](r)
+	r.check("a bucket per month of S's history", len(flow.Buckets) > 0, true)
+	r.check("a count per currency the accounts hold", len(flow.Totals.Count), len(sums))
 	return accounts
 }
 

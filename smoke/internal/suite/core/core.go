@@ -75,6 +75,53 @@ type balanceSeries struct {
 	} `json:"buckets"`
 }
 
+type amounts struct {
+	ByCurrency []struct {
+		Currency string  `json:"currency"`
+		Total    float64 `json:"total"`
+	} `json:"byCurrency"`
+}
+
+type counts []struct {
+	Currency string `json:"currency"`
+	Count    int64  `json:"count"`
+}
+
+type cashflow struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Buckets []struct {
+		Start   string  `json:"start"`
+		Income  amounts `json:"income"`
+		Expense amounts `json:"expense"`
+		Net     amounts `json:"net"`
+		Count   counts  `json:"count"`
+	} `json:"buckets"`
+	Totals struct {
+		Expense amounts `json:"expense"`
+		Count   counts  `json:"count"`
+	} `json:"totals"`
+}
+
+// A currency's figure, or "missing" so a report names the absence rather than a zero it never received
+func figure(a amounts, currency string) any {
+	for _, each := range a.ByCurrency {
+		if each.Currency == currency {
+			return each.Total
+		}
+	}
+	return "missing"
+}
+
+func countOf(c counts, currency string) any {
+	for _, each := range c {
+		if each.Currency == currency {
+			return each.Count
+		}
+	}
+	return "missing"
+}
+
 type currencyTotals struct {
 	AsOf   string `json:"asOf"`
 	Totals struct {
@@ -288,6 +335,24 @@ func (r *run) balances(ws, cash, card string) {
 	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/balances/series?granularity=MONTH&from=2026-03-01&to=2026-01-01", nil),
 		400, "a series with from after to is refused")
 	r.problem("VALIDATION_FAILED")
+
+	// Of the four writes, only the 12.50 expense is cashflow: the opening balance and the card's are anchors, and
+	// the 30 to the card is a transfer
+	r.Report.Note("cashflow")
+	r.code(r.call(http.MethodGet, "/workspaces/"+ws+"/statistics/cashflow?granularity=MONTH", nil), 200,
+		"monthly cashflow read")
+	c := decode[cashflow](r)
+	r.check("from widened to this month's first day", c.From, month)
+	r.check("one bucket, this month's", len(c.Buckets) == 1 && c.Buckets[0].Start == month, true)
+	if len(c.Buckets) == 1 {
+		b := c.Buckets[0]
+		r.check("EUR expense = the lunch alone", figure(b.Expense, "EUR"), 12.5)
+		r.check("no income: the anchors and the transfer are no cashflow", figure(b.Income, "EUR"), 0.0)
+		r.check("EUR net = −12.50", figure(b.Net, "EUR"), -12.5)
+		r.check("one operation counted, the transfer's legs not", countOf(b.Count, "EUR"), int64(1))
+	}
+	r.check("the period's EUR expense = 12.50", figure(c.Totals.Expense, "EUR"), 12.5)
+	r.check("the period's EUR count = 1", countOf(c.Totals.Count, "EUR"), int64(1))
 }
 
 func (r *run) replay(ws, cash string) {
