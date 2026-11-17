@@ -1,4 +1,4 @@
-import { expect, test, type Category } from './fixtures.ts'
+import { expect, localDaysAgo, test, type Category } from './fixtures.ts'
 
 test('the overview totals the balances per currency, and an expense moves its currency only', async ({
   page,
@@ -50,4 +50,36 @@ test('the overview totals the balances per currency, and an expense moves its cu
   await page.getByRole('link', { name: 'Overview' }).first().click()
   await expect(rows.nth(0)).toContainText('€15.00')
   await expect(rows.nth(1)).toContainText('US$25.00')
+})
+
+test("this month's card and the expenses panel show the month, in the display currency", async ({
+  page,
+  core,
+  ledger,
+}) => {
+  const { workspace, account } = ledger
+  const operations = `/workspaces/${workspace.id}/operations`
+  await core.post(`/workspaces/${workspace.id}/accounts`, {
+    name: 'Dollars',
+    currency: 'USD',
+    initialBalance: 25,
+  })
+  const now = await localDaysAgo(page, 0)
+  await core.post(operations, { amount: 100, kind: 'INCOME', accountId: account.id, occurredAt: now })
+  await core.post(operations, { amount: 12.5, kind: 'EXPENSE', accountId: account.id, occurredAt: now })
+
+  await page.goto(`/w/${workspace.id}`)
+  // Core's figures for this month's bucket, signed by their side as the feeds sign an operation
+  const card = page.getByRole('region', { name: 'This month' })
+  await expect(card).toContainText('+€100.00')
+  await expect(card).toContainText('−€12.50')
+
+  const panel = page.locator('section', { has: page.getByRole('heading', { name: 'Expenses by month' }) })
+  await expect(panel.locator('canvas')).toHaveCount(1)
+
+  // The card follows the currency the balance widget picks; the dollars had no cashflow this month
+  await page.getByRole('region', { name: 'Total balance' }).getByRole('button').nth(1).click()
+  await expect(card).toContainText('+US$0.00')
+  await expect(card).toContainText('−US$0.00')
+  await expect(panel).toContainText('No expenses over the past year.')
 })

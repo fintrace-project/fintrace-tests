@@ -52,6 +52,32 @@ test('presets switch the granularity, one chart per currency', async ({ page, co
   await expect(granularity(page, 'Monthly')).toBeVisible()
 })
 
+test("each currency's card draws its income and expenses under its balance", async ({
+  page,
+  core,
+  ledger,
+}) => {
+  await seedHistory(page, core, ledger)
+  // The bars are read with the very request the line is, so they follow every preset with it
+  const flows = page.waitForResponse((response) =>
+    response.url().includes('/statistics/cashflow?granularity=MONTH'),
+  )
+  await page.goto(`/w/${ledger.workspace.id}/charts`)
+  expect((await flows).status()).toBe(200)
+
+  for (const currency of ['EUR', 'USD']) {
+    const card = page.getByRole('region', { name: currency })
+    await expect(card.getByRole('heading', { name: 'Income and expenses' })).toBeVisible()
+    await expect(card.locator('canvas')).toHaveCount(2)
+  }
+
+  const daily = page.waitForResponse((response) =>
+    response.url().includes('/statistics/cashflow?granularity=DAY'),
+  )
+  await page.getByRole('group', { name: 'Range' }).getByRole('button', { name: '3M' }).click()
+  expect((await daily).status()).toBe(200)
+})
+
 test('picking one account leaves its currency alone', async ({ page, core, ledger }) => {
   await seedHistory(page, core, ledger)
   await page.goto(`/w/${ledger.workspace.id}/charts`)
@@ -89,10 +115,13 @@ test('a write elsewhere refreshes the charts on return', async ({ page, core, le
   await dialog.getByRole('button', { name: 'Add expense' }).click()
   await expect(dialog).toBeHidden()
 
-  // Back through the app's history, not a reload: the write invalidated the cached series, so it is read again
+  // Back through the app's history, not a reload: the write invalidated the cached series and cashflow, so
+  // both are read again
   const reread = page.waitForResponse((response) => response.url().includes('/statistics/balances/series'))
+  const flows = page.waitForResponse((response) => response.url().includes('/statistics/cashflow'))
   await page.goBack()
   expect((await reread).status()).toBe(200)
+  expect((await flows).status()).toBe(200)
   await expect(page.getByRole('region', { name: 'EUR' })).toBeVisible()
 })
 
