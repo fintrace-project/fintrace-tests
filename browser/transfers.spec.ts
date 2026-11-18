@@ -80,7 +80,8 @@ test('a transfer between currencies takes two amounts and shows the rate they im
   const dialog = page.getByRole('dialog')
   await dialog.locator('label', { hasText: 'Transfer' }).click()
   await dialog.getByRole('button', { name: /^To\b/ }).click()
-  await dialog.getByRole('button', { name: /Dollars/ }).click()
+  // The list's entry, not the trigger, which reads "To Dollars" whenever the form preselected them
+  await dialog.getByRole('button', { name: /^Dollars/ }).click()
 
   await dialog.getByLabel('Amount sent').fill('100')
   await dialog.getByLabel('Amount received').fill('108.5')
