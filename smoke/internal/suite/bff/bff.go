@@ -274,6 +274,25 @@ func (r *run) balances(ws string, want dump.Expected) []account {
 	}](r)
 	r.check("a bucket per month of S's history", len(flow.Buckets) > 0, true)
 	r.check("a count per currency the accounts hold", len(flow.Totals.Count), len(sums))
+
+	// The breakdown through the edge: S's whole history's expenses, each row a category with a figure
+	r.code(r.call(http.MethodGet,
+		"/workspaces/"+ws+"/statistics/categories/totals?kind=EXPENSE&mode=EXPANDED&includeArchived=true", nil),
+		200, "expense totals per category read")
+	rows := decode[struct {
+		Rows []struct {
+			CategoryID string `json:"categoryId"`
+			Total      struct {
+				ByCurrency []json.RawMessage `json:"byCurrency"`
+			} `json:"total"`
+		} `json:"rows"`
+	}](r).Rows
+	r.check("a row per category S spent in", len(rows) > 0, true)
+	complete := true
+	for _, row := range rows {
+		complete = complete && row.CategoryID != "" && len(row.Total.ByCurrency) > 0
+	}
+	r.check("every row names its category and a figure", complete, true)
 	return accounts
 }
 

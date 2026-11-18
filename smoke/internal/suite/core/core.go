@@ -103,6 +103,15 @@ type cashflow struct {
 	} `json:"totals"`
 }
 
+type categoryTotals struct {
+	Kind string `json:"kind"`
+	Mode string `json:"mode"`
+	Rows []struct {
+		CategoryID string  `json:"categoryId"`
+		Total      amounts `json:"total"`
+	} `json:"rows"`
+}
+
 // A currency's figure, or "missing" so a report names the absence rather than a zero it never received
 func figure(a amounts, currency string) any {
 	for _, each := range a.ByCurrency {
@@ -182,6 +191,7 @@ func Run(ctx context.Context, t suite.Target) {
 	r.transfer(ws, cash, card, food)
 	r.anchor(ws, card)
 	r.balances(ws, cash, card)
+	r.categoryTotals(ws, food)
 	r.replay(ws, cash)
 	r.recorder(ws)
 	r.feeds(ws, cash, card)
@@ -353,6 +363,24 @@ func (r *run) balances(ws, cash, card string) {
 	}
 	r.check("the period's EUR expense = 12.50", figure(c.Totals.Expense, "EUR"), 12.5)
 	r.check("the period's EUR count = 1", countOf(c.Totals.Count, "EUR"), int64(1))
+}
+
+// The lunch is the one expense; the anchors and the transfer are in no category's total
+func (r *run) categoryTotals(ws, food string) {
+	r.Report.Note("totals per category")
+	path := "/workspaces/" + ws + "/statistics/categories/totals"
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&mode=EXPANDED", nil), 200, "expense totals per category read")
+	t := decode[categoryTotals](r)
+	r.check("kind and mode are echoed", t.Kind+" "+t.Mode, "EXPENSE EXPANDED")
+	r.check("one row, food's", len(t.Rows) == 1 && t.Rows[0].CategoryID == food, true)
+	if len(t.Rows) == 1 {
+		r.check("food's EUR = the lunch alone", figure(t.Rows[0].Total, "EUR"), 12.5)
+	}
+	r.code(r.call(http.MethodGet, path+"?kind=INCOME&mode=EXPANDED", nil), 200, "income totals per category read")
+	r.check("no income: the anchors and the transfer are in no category", len(decode[categoryTotals](r).Rows), 0)
+	r.code(r.call(http.MethodGet, path+"?kind=TRANSFER&mode=EXPANDED", nil), 400, "kind TRANSFER is refused")
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&mode=COLLAPSED", nil), 409, "collapsed is refused until 3.8")
+	r.problem("CATEGORY_TOTALS_UNSUPPORTED_MODE")
 }
 
 func (r *run) replay(ws, cash string) {
