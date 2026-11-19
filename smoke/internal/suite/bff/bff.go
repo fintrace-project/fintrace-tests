@@ -277,7 +277,7 @@ func (r *run) balances(ws string, want dump.Expected) []account {
 
 	// The breakdown through the edge: S's whole history's expenses, each row a category with a figure
 	r.code(r.call(http.MethodGet,
-		"/workspaces/"+ws+"/statistics/categories/totals?kind=EXPENSE&mode=EXPANDED&includeArchived=true", nil),
+		"/workspaces/"+ws+"/statistics/categories/totals?kind=EXPENSE&includeArchived=true", nil),
 		200, "expense totals per category read")
 	rows := decode[struct {
 		Rows []struct {

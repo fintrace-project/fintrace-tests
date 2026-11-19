@@ -105,9 +105,10 @@ type cashflow struct {
 
 type categoryTotals struct {
 	Kind string `json:"kind"`
-	Mode string `json:"mode"`
 	Rows []struct {
 		CategoryID string  `json:"categoryId"`
+		ParentID   *string `json:"parentId"`
+		SelfTotal  amounts `json:"selfTotal"`
 		Total      amounts `json:"total"`
 	} `json:"rows"`
 }
@@ -365,22 +366,30 @@ func (r *run) balances(ws, cash, card string) {
 	r.check("the period's EUR count = 1", countOf(c.Totals.Count, "EUR"), int64(1))
 }
 
-// The lunch is the one expense; the anchors and the transfer are in no category's total
+// The lunch is the one expense, booked to food and rolled up into the expense root; the anchors and the transfer are
+// in no category's total
 func (r *run) categoryTotals(ws, food string) {
 	r.Report.Note("totals per category")
 	path := "/workspaces/" + ws + "/statistics/categories/totals"
-	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&mode=EXPANDED", nil), 200, "expense totals per category read")
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE", nil), 200, "expense totals per category read")
 	t := decode[categoryTotals](r)
-	r.check("kind and mode are echoed", t.Kind+" "+t.Mode, "EXPENSE EXPANDED")
-	r.check("one row, food's", len(t.Rows) == 1 && t.Rows[0].CategoryID == food, true)
-	if len(t.Rows) == 1 {
-		r.check("food's EUR = the lunch alone", figure(t.Rows[0].Total, "EUR"), 12.5)
+	r.check("kind is echoed", t.Kind, "EXPENSE")
+	r.check("two rows, the root's and food's: an empty branch is left out", len(t.Rows), 2)
+	for _, row := range t.Rows {
+		if row.CategoryID == food {
+			r.check("food's own EUR = the lunch alone", figure(row.SelfTotal, "EUR"), 12.5)
+			r.check("food's EUR total = the lunch alone", figure(row.Total, "EUR"), 12.5)
+		} else {
+			r.check("the root has nothing of its own", len(row.SelfTotal.ByCurrency), 0)
+			r.check("the root's EUR total rolls the lunch up", figure(row.Total, "EUR"), 12.5)
+		}
 	}
-	r.code(r.call(http.MethodGet, path+"?kind=INCOME&mode=EXPANDED", nil), 200, "income totals per category read")
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&currency=USD", nil), 200, "a currency no account holds read")
+	r.check("no USD account: no rows", len(decode[categoryTotals](r).Rows), 0)
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&currency=euro", nil), 400, "a malformed currency is refused")
+	r.code(r.call(http.MethodGet, path+"?kind=INCOME", nil), 200, "income totals per category read")
 	r.check("no income: the anchors and the transfer are in no category", len(decode[categoryTotals](r).Rows), 0)
-	r.code(r.call(http.MethodGet, path+"?kind=TRANSFER&mode=EXPANDED", nil), 400, "kind TRANSFER is refused")
-	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&mode=COLLAPSED", nil), 409, "collapsed is refused until 3.8")
-	r.problem("CATEGORY_TOTALS_UNSUPPORTED_MODE")
+	r.code(r.call(http.MethodGet, path+"?kind=TRANSFER", nil), 400, "kind TRANSFER is refused")
 }
 
 func (r *run) replay(ws, cash string) {
