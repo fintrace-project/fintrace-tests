@@ -113,6 +113,16 @@ type categoryTotals struct {
 	} `json:"rows"`
 }
 
+type topCategories struct {
+	Kind  string  `json:"kind"`
+	Total amounts `json:"total"`
+	Rows  []struct {
+		CategoryID string  `json:"categoryId"`
+		Total      amounts `json:"total"`
+	} `json:"rows"`
+	Other amounts `json:"other"`
+}
+
 // A currency's figure, or "missing" so a report names the absence rather than a zero it never received
 func figure(a amounts, currency string) any {
 	for _, each := range a.ByCurrency {
@@ -193,6 +203,7 @@ func Run(ctx context.Context, t suite.Target) {
 	r.anchor(ws, card)
 	r.balances(ws, cash, card)
 	r.categoryTotals(ws, food)
+	r.topCategories(ws, food)
 	r.replay(ws, cash)
 	r.recorder(ws)
 	r.feeds(ws, cash, card)
@@ -390,6 +401,30 @@ func (r *run) categoryTotals(ws, food string) {
 	r.code(r.call(http.MethodGet, path+"?kind=INCOME", nil), 200, "income totals per category read")
 	r.check("no income: the anchors and the transfer are in no category", len(decode[categoryTotals](r).Rows), 0)
 	r.code(r.call(http.MethodGet, path+"?kind=TRANSFER", nil), 400, "kind TRANSFER is refused")
+}
+
+// The month card's breakdown: food is the expense root's only child with money, so it is the one row, the empty
+// Others is no row and other is left empty
+func (r *run) topCategories(ws, food string) {
+	r.Report.Note("top categories")
+	path := "/workspaces/" + ws + "/statistics/categories/top"
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&currency=EUR&limit=1", nil), 200, "top expense categories read")
+	t := decode[topCategories](r)
+	r.check("kind is echoed", t.Kind, "EXPENSE")
+	r.check("the branch's EUR total = the lunch alone", figure(t.Total, "EUR"), 12.5)
+	r.check("one row, food's", len(t.Rows) == 1 && t.Rows[0].CategoryID == food, true)
+	if len(t.Rows) == 1 {
+		r.check("food's EUR total = the lunch alone", figure(t.Rows[0].Total, "EUR"), 12.5)
+	}
+	r.check("nothing left for other", len(t.Other.ByCurrency), 0)
+
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&currency=USD&limit=1", nil), 200, "a currency no account holds read")
+	empty := decode[topCategories](r)
+	r.check("no USD account: an empty total, no rows", len(empty.Total.ByCurrency) == 0 && len(empty.Rows) == 0, true)
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&currency=EUR&limit=0", nil), 400, "a limit of 0 is refused")
+	r.problem("VALIDATION_FAILED")
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&currency=EUR&limit=101", nil), 400, "a limit over 100 is refused")
+	r.code(r.call(http.MethodGet, path+"?kind=EXPENSE&limit=1", nil), 400, "a missing currency is refused")
 }
 
 func (r *run) replay(ws, cash string) {

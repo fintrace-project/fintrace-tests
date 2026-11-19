@@ -293,6 +293,28 @@ func (r *run) balances(ws string, want dump.Expected) []account {
 		complete = complete && row.CategoryID != "" && len(row.Total.ByCurrency) > 0
 	}
 	r.check("every row names its category and a figure", complete, true)
+
+	// The month card's breakdown through the edge, over S's whole history: in each currency the accounts hold, at
+	// most three rows, largest first, and the rows and other adding up to the branch's total
+	currencies := make([]string, 0, len(sums))
+	for c := range sums {
+		currencies = append(currencies, c)
+	}
+	slices.Sort(currencies)
+	for _, c := range currencies {
+		r.code(r.call(http.MethodGet,
+			"/workspaces/"+ws+"/statistics/categories/top?kind=EXPENSE&includeArchived=true&limit=3&currency="+c, nil),
+			200, c+": top expense categories read")
+		top := decode[topCategories](r)
+		r.check(c+": at most three rows", len(top.Rows) <= 3, true)
+		sum, ranked := figureOf(top.Other, c), true
+		for i, row := range top.Rows {
+			sum += figureOf(row.Total, c)
+			ranked = ranked && (i == 0 || figureOf(top.Rows[i-1].Total, c) >= figureOf(row.Total, c))
+		}
+		r.check(c+": rows largest first", ranked, true)
+		r.check(c+": rows and other add up to the total", cents(sum), cents(figureOf(top.Total, c)))
+	}
 	return accounts
 }
 
@@ -484,6 +506,32 @@ func (r *run) cleanUp() {
 			r.Report.Info("could not delete workspace %s: %d", ws, resp.Code)
 		}
 	}
+}
+
+type amounts struct {
+	ByCurrency []struct {
+		Currency string  `json:"currency"`
+		Total    float64 `json:"total"`
+	} `json:"byCurrency"`
+}
+
+type topCategories struct {
+	Total amounts `json:"total"`
+	Rows  []struct {
+		CategoryID string  `json:"categoryId"`
+		Total      amounts `json:"total"`
+	} `json:"rows"`
+	Other amounts `json:"other"`
+}
+
+// A currency's figure, zero when absent: an empty other carries no currency at all
+func figureOf(a amounts, currency string) float64 {
+	for _, each := range a.ByCurrency {
+		if each.Currency == currency {
+			return each.Total
+		}
+	}
+	return 0
 }
 
 func cents(v float64) float64 {
