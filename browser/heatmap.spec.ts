@@ -37,21 +37,25 @@ test("the heatmap shows the period's figures and the selected day's", async ({ p
   await expect(card).toContainText('€42.50')
   await expect(card.getByRole('gridcell', { selected: true })).toHaveCount(1)
   // Each of the day's figures a label and its value, apart on a phone
-  await expect(card).toContainText(/Spent\s*€12\.50/)
-  await expect(card).toContainText(/Income\s*€100\.00/)
-  await expect(card).toContainText(/Transactions\s*2/)
+  await expect(card).toContainText(/Spent\s*−€12\.50/)
+  await expect(card).toContainText(/Income\s*\+€100\.00/)
+  await expect(card).toContainText('2 transactions')
+  // Core's expenseRatio: 42.50 of 100 income
+  await expect(card).toContainText('43% of income')
 
   const modes = card.getByRole('group', { name: 'Show' })
   await modes.getByRole('button', { name: 'Transactions' }).click()
   await expect(card).toContainText('3 transactions')
   await modes.getByRole('button', { name: 'Net flow' }).click()
   await expect(card).toContainText('€57.50')
+  // Core's netRatio, 0.575, as the share saved
+  await expect(card).toContainText('58% of income saved')
 
   // The arrows walk the grid: up is the day before, sideways a week
   await card.getByRole('gridcell', { selected: true }).focus()
   await page.keyboard.press('ArrowUp')
   await page.keyboard.press('ArrowUp')
-  await expect(card).toContainText(/Spent\s*€30\.00/)
+  await expect(card).toContainText(/Spent\s*−€30\.00/)
   await expect(card.getByRole('gridcell', { selected: true })).toBeFocused()
 })
 
@@ -75,7 +79,7 @@ test("opening the feed on a day shows that day's operations alone", async ({ pag
   await seedDays(page, core, ledger)
   await page.goto(`/w/${ledger.workspace.id}`)
   const card = page.getByRole('region', { name: 'Daily spending' })
-  await expect(card).toContainText(/Spent\s*€12\.50/)
+  await expect(card).toContainText(/Spent\s*−€12\.50/)
 
   await card.getByRole('link', { name: 'Open in feed →' }).click()
   await expect(page).toHaveURL(/\/operations\?day=\d{4}-\d{2}-\d{2}$/)
