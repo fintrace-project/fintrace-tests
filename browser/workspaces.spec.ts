@@ -35,11 +35,11 @@ test('a workspace goes from new through archived to deleted, its first account c
     await expect(archived).toBeVisible()
     await page.goto(`/w/${id}/operations`)
     await expect(archived).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add operation' })).toHaveCount(0)
+    await expect(page.getByLabel('Amount')).toHaveCount(0)
 
     await page.getByRole('button', { name: 'Unarchive' }).click()
     await expect(archived).toBeHidden()
-    await expect(page.getByRole('button', { name: 'Add operation' })).toBeVisible()
+    await expect(page.getByLabel('Amount')).toBeVisible()
 
     const renamed = `${name} b`
     await page.goto(`/w/${id}/settings`)
